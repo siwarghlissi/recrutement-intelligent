@@ -1,0 +1,59 @@
+version: '3'
+services:
+  # PostgreSQL pour l'authentification
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: 11168477
+      POSTGRES_DB: auth_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # MongoDB pour les logs ou données non structurées
+  mongodb:
+    image: mongo:5
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: mongopass
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+  
+  # Microservice Auth
+  auth-service:
+    build: ./backend/auth-service
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: 11168477
+
+  # Kafka + Zookeeper
+  zookeeper:
+    image: bitnami/zookeeper:3.7
+    ports:
+      - "2181:2181"
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+
+  kafka:
+    image: bitnami/kafka:3.1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+    depends_on:
+      - zookeeper
+
+volumes:
+  postgres_data:
+  mongodb_data:
