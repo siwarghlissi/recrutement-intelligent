@@ -1,8 +1,9 @@
-version: '3'
+
+
 services:
-  # PostgreSQL pour l'authentification
-  postgres:
+  postgres-auth:
     image: postgres:13
+    container_name: postgres-auth
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: 11168477
@@ -10,11 +11,56 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_auth_data:/var/lib/postgresql/data
+    networks:
+      - recrutement-network
 
-  # MongoDB pour les logs ou données non structurées
+  postgres-offres:
+    image: postgres:13
+    container_name: postgres-offres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: offres_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_offres_data:/var/lib/postgresql/data
+    networks:
+      - recrutement-network
+
+  postgres-candidat:
+    image: postgres:13
+    container_name: postgres-candidat
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: candidat_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_candidat_data:/var/lib/postgresql/data
+    networks:
+      - recrutement-network
+  
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - recrutement-network
+
   mongodb:
     image: mongo:5
+    container_name: mongodb
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: mongopass
@@ -22,38 +68,54 @@ services:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
-  
-  # Microservice Auth
-  auth-service:
-    build: ./backend/auth-service
-    ports:
-      - "8081:8080"
-    depends_on:
-      - postgres
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
-      SPRING_DATASOURCE_USERNAME: root
-      SPRING_DATASOURCE_PASSWORD: 11168477
+    networks:
+      - recrutement-network
 
-  # Kafka + Zookeeper
   zookeeper:
     image: bitnami/zookeeper:3.7
+    container_name: zookeeper
     ports:
       - "2181:2181"
     environment:
       ALLOW_ANONYMOUS_LOGIN: "yes"
+    networks:
+      - recrutement-network
 
   kafka:
     image: bitnami/kafka:3.1
+    container_name: kafka
     ports:
       - "9092:9092"
+      - "29092:29092"
     environment:
       KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
       ALLOW_PLAINTEXT_LISTENER: "yes"
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_CFG_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_LOG_RETENTION_HOURS: 168
+      KAFKA_CFG_LOG_SEGMENT_BYTES: 1073741824
+      KAFKA_CFG_LOG_RETENTION_CHECK_INTERVAL_MS: 300000
+      KAFKA_CFG_NUM_PARTITIONS: 3
+      KAFKA_CFG_DEFAULT_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
+    networks:
+      - recrutement-network
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 volumes:
-  postgres_data:
+  postgres_auth_data:
+  postgres_offres_data:
+  postgres_candidat_data: 
   mongodb_data:
+  minio_data: 
+
+networks:
+  recrutement-network:
+    driver: bridge
